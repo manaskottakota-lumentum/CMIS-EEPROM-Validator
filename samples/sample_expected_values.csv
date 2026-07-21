@@ -1,0 +1,2 @@
+Check,Description,Bank,Page,Address,Length,CMIS Type,Simple Type,Value
+YES,Identifier and revision bytes,N/A,Lower,00h-02h,3 bytes,U8[],byte[],19 52 04

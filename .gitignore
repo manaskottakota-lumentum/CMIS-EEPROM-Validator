@@ -1,0 +1,12 @@
+.DS_Store
+Thumbs.db
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+exports/
+*.log
+tmp_uploads/
+CmisEepromValidator.Wpf/bin/
+CmisEepromValidator.Wpf/obj/
+.vs/

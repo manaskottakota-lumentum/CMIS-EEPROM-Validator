@@ -1,0 +1,511 @@
+<Window x:Class="CmisEepromValidator.Wpf.ModernWindow"
+        x:Name="RootWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CVSA CMIS EEPROM Validator v1.0.0"
+        Width="1536"
+        Height="1000"
+        MinWidth="1260"
+        MinHeight="760"
+        Background="{StaticResource PageBrush}">
+    <Window.Resources>
+        <Style x:Key="MutedText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <Style x:Key="MetricLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#566274" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+
+        <Style x:Key="MetricValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,8,0,0" />
+        </Style>
+
+        <Style x:Key="DetailLabel" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="DetailValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#374151" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="TrimmedCellText" TargetType="TextBlock">
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Padding" Value="6,0" />
+        </Style>
+
+        <Style x:Key="PagerButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="44,34,44,38">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Validate EEPROM" FontSize="28" FontWeight="Bold" Foreground="{StaticResource InkBrush}" />
+                <TextBlock Text="Load a CMIS EEPROM hex dump and an expected-values file to validate programmed parameters."
+                           Style="{StaticResource MutedText}"
+                           Margin="0,8,0,0" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,8,0,0">
+                <Button Command="{Binding ExportResultsCommand}" Style="{StaticResource PrimaryButton}" Height="40" Padding="18,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Export Results" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Border Grid.Column="1" Width="1" Height="24" Background="#202632" HorizontalAlignment="Center" />
+                        <Path Grid.Column="2" Data="M 0 0 L 4 4 L 8 0" Stroke="#FFFFFF" StrokeThickness="1.5" VerticalAlignment="Center" />
+                    </Grid>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1" Margin="0,22,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Style="{StaticResource Card}" Padding="20" Height="160">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="EEPROM / CMIS Hex Dump" FontWeight="SemiBold" FontSize="15" />
+                    <Grid Grid.Row="1" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="26" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Viewbox Width="18" Height="22">
+                            <Canvas Width="18" Height="22">
+                                <Path Data="M2,1 L12,1 L17,6 L17,21 L2,21 Z M12,1 L12,6 L17,6"
+                                      Stroke="#111827"
+                                      StrokeThickness="1.7"
+                                      Fill="Transparent" />
+                            </Canvas>
+                        </Viewbox>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding DumpFileName}"
+                                   FontWeight="SemiBold"
+                                   FontSize="14"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center"
+                                   Margin="10,0,0,0" />
+                        <TextBlock Grid.Column="2" Text="{Binding DumpFileSize}" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="10" Height="10" Fill="{Binding DumpLoadedBrush}" />
+                            <TextBlock Text="{Binding DumpLoadedText}" FontWeight="SemiBold" Margin="10,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                        <Button Content="Replace File" Command="{Binding BrowseDumpCommand}" Style="{StaticResource SecondaryButton}" Width="118" Height="40" />
+                        <Button Content="View Info" Command="{Binding ViewDumpInfoCommand}" Style="{StaticResource SecondaryButton}" Width="104" Height="40" Margin="12,0,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="20" Height="160">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Expected Values (Excel)" FontWeight="SemiBold" FontSize="15" />
+                    <Grid Grid.Row="1" VerticalAlignment="Center">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="26" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Width="18" Height="20" Background="#0F8A4B" CornerRadius="2" VerticalAlignment="Center">
+                            <TextBlock Text="X" Foreground="#FFFFFF" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding WorkbookFileName}"
+                                   FontWeight="SemiBold"
+                                   FontSize="14"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center"
+                                   Margin="10,0,0,0" />
+                        <TextBlock Grid.Column="2" Text="{Binding WorkbookFileSize}" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="10" Height="10" Fill="{Binding WorkbookLoadedBrush}" />
+                            <TextBlock Text="{Binding WorkbookLoadedText}" FontWeight="SemiBold" Margin="10,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal">
+                        <Button Content="Replace File" Command="{Binding BrowseWorkbookCommand}" Style="{StaticResource SecondaryButton}" Width="118" Height="40" />
+                        <Button Content="View Info" Command="{Binding ViewWorkbookInfoCommand}" Style="{StaticResource SecondaryButton}" Width="104" Height="40" Margin="12,0,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <StackPanel Grid.Row="2" Margin="0,22,0,0">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Run Validation" Command="{Binding RunValidationCommand}" Style="{StaticResource PrimaryButton}" Width="126" Height="40" />
+                <Button Content="Load MSFT Sample" Command="{Binding LoadSamplesCommand}" Style="{StaticResource SecondaryButton}" Width="142" Height="40" Margin="12,0,0,0" />
+                <Button Content="Clear" Command="{Binding ClearCommand}" Style="{StaticResource SecondaryButton}" Width="74" Height="40" Margin="12,0,0,0" />
+                <CheckBox Content="Show all rows" IsChecked="{Binding ShowAllRows}" VerticalAlignment="Center" Margin="24,0,0,0" />
+            </StackPanel>
+
+            <Border Style="{StaticResource Card}" Padding="16,18" Margin="0,14,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="14" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="Switch IP / Host" Style="{StaticResource MetricLabel}" />
+                        <TextBox Text="{Binding SwitchHost, UpdateSourceTrigger=PropertyChanged}" Height="44" FontSize="14" Padding="12,0" Margin="0,7,16,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Username" Style="{StaticResource MetricLabel}" />
+                        <TextBox Text="{Binding SwitchUsername, UpdateSourceTrigger=PropertyChanged}" Height="44" FontSize="14" Padding="12,0" Margin="0,7,16,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Password" Style="{StaticResource MetricLabel}" />
+                        <TextBox Text="{Binding SwitchPassword, UpdateSourceTrigger=PropertyChanged}" Height="44" FontSize="14" Padding="12,0" Margin="0,7,16,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="Port" Style="{StaticResource MetricLabel}" />
+                        <TextBox Text="{Binding SwitchPort, UpdateSourceTrigger=PropertyChanged}" Height="44" FontSize="14" Padding="12,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Grid.ColumnSpan="3">
+                        <TextBlock Text="CMIS Pages" Style="{StaticResource MetricLabel}" />
+                        <TextBox Text="{Binding SwitchPages, UpdateSourceTrigger=PropertyChanged}" Height="44" FontSize="14" Padding="12,0" Margin="0,7,16,0" ToolTip="Leave blank to use 0x00 0x01 0x02 0x03 0x13 0x2f" />
+                    </StackPanel>
+                    <Button Grid.Row="2"
+                            Grid.Column="3"
+                            Content="Read From Switch"
+                            Command="{Binding ReadSwitchCommand}"
+                            Style="{StaticResource PrimaryButton}"
+                            Width="170"
+                            Height="44"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Bottom" />
+                </Grid>
+            </Border>
+        </StackPanel>
+
+        <Border Grid.Row="3" Style="{StaticResource Card}" Padding="20,16" Height="92" Margin="0,16,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="230" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="145" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="105" />
+                    <ColumnDefinition Width="1" />
+                    <ColumnDefinition Width="260" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="50" Height="50" CornerRadius="25" Background="{Binding SummaryIconBackground}">
+                        <Border Width="30" Height="30" CornerRadius="15" Background="{Binding SummaryIconBrush}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding SummaryIconText}" Foreground="#FFFFFF" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Border>
+                    <TextBlock Text="{Binding OverallText}" Foreground="{Binding OverallBrush}" FontSize="28" FontWeight="Bold" VerticalAlignment="Center" Margin="16,0,0,0" />
+                </StackPanel>
+                <Border Grid.Column="1" Background="#DDE3EA" Height="34" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Total" Style="{StaticResource MetricLabel}" />
+                    <TextBlock Text="{Binding Total}" Style="{StaticResource MetricValue}" />
+                </StackPanel>
+                <Border Grid.Column="3" Background="#DDE3EA" Height="34" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="4" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Passed" Style="{StaticResource MetricLabel}" />
+                    <TextBlock Text="{Binding Passed}" Foreground="{StaticResource AccentBrush}" Style="{StaticResource MetricValue}" />
+                </StackPanel>
+                <Border Grid.Column="5" Background="#DDE3EA" Height="34" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Failed" Style="{StaticResource MetricLabel}" />
+                    <TextBlock Text="{Binding Failed}" Foreground="{StaticResource DangerBrush}" Style="{StaticResource MetricValue}" />
+                </StackPanel>
+                <Border Grid.Column="7" Background="#DDE3EA" Height="34" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Not Checked" Style="{StaticResource MetricLabel}" />
+                    <TextBlock Text="{Binding NotChecked}" Style="{StaticResource MetricValue}" />
+                </StackPanel>
+                <Border Grid.Column="9" Background="#DDE3EA" Height="34" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="10" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Errors" Style="{StaticResource MetricLabel}" />
+                    <TextBlock Text="{Binding Errors}" Style="{StaticResource MetricValue}" />
+                </StackPanel>
+                <Border Grid.Column="11" Background="#DDE3EA" Height="34" VerticalAlignment="Center" />
+                <Grid Grid.Column="12" VerticalAlignment="Center" Margin="26,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="Validation Time" Style="{StaticResource MetricLabel}" />
+                        <TextBlock Text="{Binding ValidationTime}"
+                                   FontWeight="SemiBold"
+                                   Margin="0,8,0,0"
+                                   TextWrapping="NoWrap" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="{Binding ResultsAreaGridRow}"
+              Grid.RowSpan="{Binding ResultsAreaGridRowSpan}"
+              Panel.ZIndex="{Binding ResultsAreaZIndex}"
+              Margin="{Binding ResultsAreaMargin}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="1*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Style="{StaticResource Card}" Padding="18" Grid.ColumnSpan="{Binding ResultsColumnSpan}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Validation Results" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" />
+                        <Button Grid.Column="1"
+                                Command="{Binding ToggleResultsExpandedCommand}"
+                                Style="{StaticResource SecondaryButton}"
+                                Height="30"
+                                Padding="10,0"
+                                ToolTip="{Binding ResultsExpandButtonText}">
+                            <StackPanel Orientation="Horizontal">
+                                <Path Data="{Binding ResultsExpandIconData}"
+                                      Stroke="#111827"
+                                      StrokeThickness="1.5"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      Width="18"
+                                      Height="18"
+                                      Stretch="Uniform"
+                                      VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding ResultsExpandButtonText}"
+                                           Margin="7,0,0,0"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                    <Grid Grid.Row="1" Margin="0,14,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="310" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="150" />
+                        </Grid.ColumnDefinitions>
+                        <Grid Height="42">
+                            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Padding="38,0,10,0" />
+                            <Path Data="M 8 14 A 6 6 0 1 1 14 8 M 13 13 L 19 19"
+                                  Stroke="#435064"
+                                  StrokeThickness="1.6"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center"
+                                  Margin="12,0,0,0" />
+                            <TextBlock Text="Search parameters..."
+                                       Foreground="#6B7280"
+                                       Margin="38,0,0,0"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"
+                                       Visibility="{Binding SearchPlaceholderVisibility}" />
+                        </Grid>
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding StatusOptions}" SelectedItem="{Binding SelectedStatus}" Height="42" />
+                    </Grid>
+
+                    <DataGrid Grid.Row="2"
+                              ItemsSource="{Binding ResultsView}"
+                              SelectedItem="{Binding SelectedResult, Mode=TwoWay}"
+                              IsReadOnly="True"
+                              RowHeight="40"
+                              ColumnHeaderHeight="40"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Page" Binding="{Binding SourceSheet}" Width="82" ElementStyle="{StaticResource TrimmedCellText}" />
+                            <DataGridTextColumn Header="Check" Binding="{Binding Check}" Width="62" ElementStyle="{StaticResource TrimmedCellText}" />
+                            <DataGridTextColumn Header="Parameter" Binding="{Binding Parameter}" Width="2*" ElementStyle="{StaticResource TrimmedCellText}" />
+                            <DataGridTextColumn Header="Address" Binding="{Binding AddressDisplay}" Width="96" ElementStyle="{StaticResource TrimmedCellText}" />
+                            <DataGridTextColumn x:Name="AddressDecimalColumn" Header="Address (Dec)" Binding="{Binding AddressDecimal}" Width="100" ElementStyle="{StaticResource TrimmedCellText}" Visibility="Collapsed" />
+                            <DataGridTextColumn x:Name="BitsColumn" Header="Bits" Binding="{Binding Bits}" Width="70" ElementStyle="{StaticResource TrimmedCellText}" Visibility="Collapsed" />
+                            <DataGridTextColumn Header="Data Type" Binding="{Binding DataType}" Width="130" ElementStyle="{StaticResource TrimmedCellText}" />
+                            <DataGridTextColumn Header="Expected" Binding="{Binding Expected}" Width="96" ElementStyle="{StaticResource TrimmedCellText}" />
+                            <DataGridTextColumn Header="Module Value" Binding="{Binding Actual}" Width="106" ElementStyle="{StaticResource TrimmedCellText}" />
+                            <DataGridTemplateColumn Header="Status" Width="130">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Ellipse Width="13" Height="13" Fill="{Binding StatusBrush}" Margin="4,0,7,0" />
+                                            <TextBlock Text="{Binding Status}" Foreground="{Binding StatusBrush}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="20" Visibility="{Binding DetailsVisibility}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Parameter Details" FontWeight="SemiBold" FontSize="15" />
+                        <TextBlock Grid.Column="1" Text="X" FontWeight="Bold" Foreground="#111827" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" Margin="0,24,0,0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,18">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding SelectedResult.Parameter, TargetNullValue=-, FallbackValue=-}"
+                                           FontWeight="SemiBold"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,12,0" />
+                                <Border Grid.Column="1" Background="#DDF6E7" CornerRadius="4" Padding="10,5" VerticalAlignment="Top">
+                                    <TextBlock Text="{Binding SelectedResult.Status, TargetNullValue=-, FallbackValue=-}" Foreground="{Binding SelectedResult.StatusBrush}" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Description" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.Description, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Source Sheet" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.SourceSheet, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Check" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.Check, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Page" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.Page, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Bank" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.Bank, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Start Address" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.Address, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Length" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.LengthText, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Data Type" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.DataType, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="CMIS Type" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.CmisType, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Simple Type" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.SimpleType, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border BorderBrush="#E8EDF3" BorderThickness="0,0,0,1" Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Expected Value" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.Expected, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                            <Border Padding="0,9">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Module Value" Style="{StaticResource DetailLabel}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedResult.Actual, TargetNullValue=-, FallbackValue=-}" Style="{StaticResource DetailValue}" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
