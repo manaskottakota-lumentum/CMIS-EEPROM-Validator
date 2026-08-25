@@ -7,6 +7,8 @@ venv/
 exports/
 *.log
 tmp_uploads/
-CmisEepromValidator.Wpf/bin/
-CmisEepromValidator.Wpf/obj/
+build/
+dist/
+dist_tk/
+scratch/
 .vs/

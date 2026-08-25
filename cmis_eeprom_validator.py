@@ -101,8 +101,11 @@ def normalize_header(value: str) -> str:
         "spec": "expected",
         "msft_spec": "expected",
         "spec_value": "expected",
+        "dump_value": "expected",
         "target": "expected",
         "value": "value",
+        "values": "value",
+        "converted_value": "value",
         "actual": "value",
         "actual_value": "value",
         "comparator": "comparator",
@@ -263,6 +266,14 @@ def parse_dump_page_header(line: str) -> Optional[str]:
     lower_line = line.lower()
     if "lower" in lower_line and re.search(r"\b(page|memory|register|idprom|eeprom|cmis)\b", lower_line):
         return "lower"
+
+    page_bank_match = re.search(
+        r"\bpage\s+(?:0x)?([0-9a-fA-F]{1,2})h?\s+bank\s+(?:0x)?[0-9a-fA-F]{1,2}h?\s+register\b",
+        line,
+        re.IGNORECASE,
+    )
+    if page_bank_match:
+        return f"{int(page_bank_match.group(1), 16):02X}"
 
     if "upper" not in lower_line:
         return None
@@ -538,11 +549,16 @@ def bit_mask_from_text(bits: object) -> Optional[int]:
     if range_match:
         high = int(range_match.group(1))
         low = int(range_match.group(2))
+        if high > 7 or low < 0:
+            return None
         if high == 7 and low == 0:
             return None
         return sum(1 << bit for bit in range(low, high + 1))
     if re.fullmatch(r"\d+", text):
-        return 1 << int(text)
+        bit = int(text)
+        if bit > 7:
+            return None
+        return 1 << bit
     return None
 
 
@@ -560,6 +576,9 @@ def int_to_hex_bytes(value: int, length: int) -> str:
 
 def hex_bytes_from_msft_spec(spec: object, length: int) -> str:
     text = compact_text(spec).upper()
+    h_tokens = re.findall(r"\b([0-9A-F]{2})H\b", text)
+    if len(h_tokens) > 1:
+        return " ".join(h_tokens)
     match = re.search(r"0X([0-9A-F]+)", text) or re.search(r"([0-9A-F]+)H", text)
     if not match:
         return ""
@@ -685,7 +704,7 @@ def rows_to_dicts(rows: List[List[str]], sheet_name: str = "", raise_if_missing:
         if not raise_if_missing:
             return []
         raise ValidationError(
-            "Spreadsheet needs parameter/expected columns, CMIS map Page/Address/Length columns, or an MSFT Byte/MSFT spec memory-map sheet."
+            "Spreadsheet needs parameter/expected columns, CMIS map Page/Address/Length columns, or a Byte/Dump Value memory-map sheet."
         )
     records: List[Dict[str, str]] = []
     for row_index, row in enumerate(rows[header_row_index + 1 :], start=header_row_index + 2):
@@ -890,7 +909,77 @@ def compared_display_values(parameter: ExpectedParameter, actual: str, raw: byte
         actual_value = (int.from_bytes(raw, byteorder="big", signed=False) & mask) >> shift
         expected_value = (parse_int(parameter.expected) & mask) >> shift
         return str(actual_value), str(expected_value)
-    return actual, parameter.expected
+    actual_display = interpreted_parameter_display(parameter, raw) or actual
+    expected_raw = expected_bytes_for_parameter(parameter)
+    expected_display = interpreted_parameter_display(parameter, expected_raw) if expected_raw is not None else ""
+    return actual_display, expected_display or parameter.expected
+
+
+def interpreted_parameter_display(parameter: ExpectedParameter, raw: bytes | None) -> str:
+    if raw is None:
+        return ""
+    try:
+        from workbook_generator import interpreted_value_for_range, value_column_text
+
+        interpreted = interpreted_value_for_range(
+            raw,
+            0,
+            len(raw) - 1,
+            parameter.bits or "7-0",
+            parameter.parameter,
+            parameter.cmis_type or parameter.data_type,
+        )
+        return value_column_text(
+            interpreted,
+            parameter.description,
+            raw_hex_value(raw),
+            raw,
+            0,
+            len(raw) - 1,
+            parameter.bits or "7-0",
+        )
+    except Exception:
+        return ""
+
+
+def expected_bytes_for_parameter(parameter: ExpectedParameter) -> bytes | None:
+    expected = compact_text(parameter.expected)
+    if not expected or expected == "*":
+        return None
+    bit_range = parse_bits(parameter.bits or "")
+    binary_match = re.fullmatch(r"([01]+)b", expected.strip(), flags=re.IGNORECASE)
+    if bit_range and binary_match and parameter.length == 1:
+        high, low = bit_range
+        value = int(binary_match.group(1), 2) << low
+        return bytes([value & 0xFF])
+    if looks_like_hex_bytes(expected):
+        text = normalize_hex(expected)
+        if len(text) % 2:
+            return None
+        try:
+            return bytes.fromhex(text)
+        except ValueError:
+            return None
+    if parameter.length == 1:
+        try:
+            return bytes([parse_int(expected) & 0xFF])
+        except ValidationError:
+            return None
+    return None
+
+
+def parse_bits(bits: str) -> Tuple[int, int] | None:
+    text = compact_text(bits)
+    match = re.fullmatch(r"(\d+)(?:\s*-\s*(\d+))?", text)
+    if not match:
+        return None
+    first = int(match.group(1))
+    second = int(match.group(2)) if match.group(2) is not None else first
+    high = max(first, second)
+    low = min(first, second)
+    if high > 7 or low < 0:
+        return None
+    return high, low
 
 
 def validation_result_for_missing_reference(parameter: ExpectedParameter) -> ValidationResult:
@@ -1000,7 +1089,7 @@ def summarize_results(results: Iterable[ValidationResult]) -> Dict[str, int]:
 
 def run_self_test() -> int:
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    dump_path = os.path.join(base_dir, "sample_first_6_digits_eeprom_dump.hex")
+    dump_path = os.path.join(base_dir, "samples", "sample_first_6_digits_eeprom_dump.hex")
     expected_path = os.path.join(base_dir, "samples", "sample_expected_values.csv")
     dump = CmisDump.from_file(dump_path)
     parameters = load_expected_parameters(expected_path)
