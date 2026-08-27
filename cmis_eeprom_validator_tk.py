@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
+import sys
 import tempfile
 import time
 from datetime import datetime
@@ -14,7 +15,11 @@ from cmis_eeprom_validator import CmisDump, load_expected_parameters, validate_p
 from workbook_generator import generate_workbook_from_dump
 
 
-ROOT = Path(__file__).resolve().parent
+def app_root() -> Path:
+    return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+
+
+ROOT = app_root()
 
 
 def result_to_dict(result) -> dict[str, object]:

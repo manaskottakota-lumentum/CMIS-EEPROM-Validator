@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import math
+import sys
 from pathlib import Path
 import re
 import shutil
@@ -23,6 +24,10 @@ UPPER_HEADERS = ["Byte", "Hex", "Size(bytes)", "Bits", "Field Name", "Type", DUM
 DEFAULT_TEMPLATE_NAME = "1_6T_2xDR4_MemoryMap_MSFT_requirements_v1_2.xlsx"
 
 
+def app_root() -> Path:
+    return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+
+
 def generate_workbook_from_dump(dump_path: str, output_path: str) -> int:
     template_path = find_default_template()
     if template_path:
@@ -32,6 +37,8 @@ def generate_workbook_from_dump(dump_path: str, output_path: str) -> int:
 
 def find_default_template() -> Path | None:
     candidates = [
+        app_root() / "samples" / DEFAULT_TEMPLATE_NAME,
+        app_root() / DEFAULT_TEMPLATE_NAME,
         Path(__file__).resolve().parent / "samples" / DEFAULT_TEMPLATE_NAME,
         Path(__file__).resolve().parent / DEFAULT_TEMPLATE_NAME,
         Path(os.environ.get("USERPROFILE", "")) / "OneDrive - Lumentum Operations LLC" / "Documents" / DEFAULT_TEMPLATE_NAME,
