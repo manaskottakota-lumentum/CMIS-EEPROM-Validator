@@ -13,6 +13,7 @@ from copy import copy
 from xml.sax.saxutils import escape
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 from cmis_eeprom_validator import CmisDump
 
@@ -132,8 +133,16 @@ def generate_template_workbook_from_dump(dump_path: str, output_path: str, templ
     if row_count == 0:
         raise ValueError("No matching MSFT memory-map rows were found in the template workbook.")
     rename_msft_spec_headers(workbook)
+    remove_change_history_sheet(workbook)
+    autofit_workbook_columns(workbook)
     workbook.save(output)
     return row_count
+
+
+def remove_change_history_sheet(workbook) -> None:
+    for sheet_name in list(workbook.sheetnames):
+        if normalize_compare_text(sheet_name) == "change history" and len(workbook.sheetnames) > 1:
+            del workbook[sheet_name]
 
 
 def rename_msft_spec_headers(workbook) -> None:
@@ -142,6 +151,21 @@ def rename_msft_spec_headers(workbook) -> None:
             for cell in row:
                 if str(cell.value or "").strip().lower() in {"msft spec", "spec"}:
                     cell.value = DUMP_VALUE_HEADER
+
+
+def autofit_workbook_columns(workbook) -> None:
+    for worksheet in workbook.worksheets:
+        for column_index in range(1, worksheet.max_column + 1):
+            column_letter = get_column_letter(column_index)
+            max_length = 0
+            for row_index in range(1, worksheet.max_row + 1):
+                cell = worksheet.cell(row_index, column_index)
+                value = cell.value
+                if value is None:
+                    continue
+                max_length = max(max_length, max(len(part) for part in str(value).splitlines()))
+            if max_length:
+                worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 8), 70)
 
 
 def ensure_values_column(worksheet, spec_col: int, values_col: int | None) -> int:
@@ -678,7 +702,7 @@ def is_reserved_or_custom_section(definition: dict[str, object]) -> bool:
     description = str(definition.get("description", "")).strip().upper()
     if field_name.startswith("RESERVED") or type_text == "RESERVED":
         return True
-    if field_name in {"CUSTOM"} or re.fullmatch(r"CUSTOM\[\d+\]", field_name):
+    if field_name in {"CUSTOM"} or re.match(r"CUSTOM(?:\[\d+\])?(?:\s|$)", field_name):
         return True
     if field_name.startswith("GOOGLECUSTOMRESERVED"):
         return True
@@ -689,7 +713,7 @@ def byte_section_name(field_name: str, address: int) -> str:
     prefix = re.sub(r"\[\d+\]", "", field_name).strip() or "Byte"
     if prefix.upper() == "RESERVED":
         return f"ReservedByte{address:02X}h"
-    if prefix.upper() == "CUSTOM":
+    if prefix.upper().startswith("CUSTOM"):
         return f"CustomByte{address:02X}h"
     return f"{prefix}Byte{address:02X}h"
 
@@ -758,12 +782,7 @@ def apply_captured_style(target, style: object) -> None:
 def generate_basic_workbook_from_dump(dump_path: str, output_path: str) -> int:
     dump = CmisDump.from_file(dump_path)
     sheets = dump.pages.get("default") or next(iter(dump.pages.values()), {})
-    workbook_rows: dict[str, list[list[str]]] = {
-        "Change history": [
-            ["#", "Version", "Date", "Descriptions"],
-            ["1", "generated", "", f"Generated from {Path(dump_path).name}. Values are populated from switch EEPROM dump bytes."],
-        ]
-    }
+    workbook_rows: dict[str, list[list[str]]] = {}
 
     for page, data in sorted(sheets.items(), key=lambda item: _page_sort_key(item[0])):
         sheet_name = _sheet_name(page)
@@ -804,11 +823,11 @@ def generate_basic_workbook_from_dump(dump_path: str, output_path: str) -> int:
                 )
         workbook_rows[sheet_name] = rows
 
-    if len(workbook_rows) == 1:
+    if not workbook_rows:
         raise ValueError("No EEPROM page data found in the selected dump file.")
 
     write_xlsx(output_path, workbook_rows)
-    return sum(max(len(rows) - 1, 0) for name, rows in workbook_rows.items() if name != "Change history")
+    return sum(max(len(rows) - 1, 0) for rows in workbook_rows.values())
 
 
 def page_from_template_sheet(sheet_name: str) -> str:
@@ -1197,7 +1216,7 @@ def _worksheet_xml(rows: list[list[str]]) -> str:
         row_xml.append(f'<row r="{row_index}">{"".join(cells)}</row>')
     last_column = _column_name(max(len(row) for row in rows))
     last_row = len(rows)
-    widths = _column_widths(max(len(row) for row in rows))
+    widths = _column_widths_for_rows(rows)
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
@@ -1290,11 +1309,17 @@ def _styles_xml() -> str:
     )
 
 
-def _column_widths(column_count: int) -> str:
-    defaults = [12, 10, 12, 10, 30, 14, 16, 60]
+def _column_widths_for_rows(rows: list[list[str]]) -> str:
+    column_count = max(len(row) for row in rows)
+    widths = []
+    for column_index in range(column_count):
+        max_length = 0
+        for row in rows:
+            value = row[column_index] if column_index < len(row) else ""
+            max_length = max(max_length, max(len(part) for part in str(value).splitlines()))
+        widths.append(min(max(max_length + 2, 8), 70))
     cols = []
-    for index in range(1, column_count + 1):
-        width = defaults[index - 1] if index <= len(defaults) else 18
+    for index, width in enumerate(widths, start=1):
         cols.append(f'<col min="{index}" max="{index}" width="{width}" customWidth="1"/>')
     return "<cols>" + "".join(cols) + "</cols>"
 
