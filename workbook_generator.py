@@ -129,6 +129,9 @@ def generate_template_workbook_from_dump(dump_path: str, output_path: str, templ
         row_count += ensure_defined_page_sheet(workbook, sheets, page)
     row_count += ensure_defined_page_sheet(workbook, sheets, "1E")
     row_count += ensure_defined_page_sheet(workbook, sheets, "1F")
+    for page_number in range(0x20, 0x2C):
+        row_count += ensure_defined_page_sheet(workbook, sheets, f"{page_number:02X}")
+    row_count += populate_vdm_threshold_summary(workbook, sheets)
 
     if row_count == 0:
         raise ValueError("No matching MSFT memory-map rows were found in the template workbook.")
@@ -272,7 +275,7 @@ def ensure_defined_page_sheet(workbook, sheets: dict[str, bytearray], page: str)
 
     style_template = capture_sheet_styles(worksheet)
     clear_sheet_values(worksheet)
-    populate_defined_page_sheet(worksheet, page, page_bytes, style_template, definitions)
+    populate_defined_page_sheet(worksheet, page, page_bytes, style_template, definitions, sheets)
     return len(definitions)
 
 
@@ -302,8 +305,161 @@ def ensure_custom_page_sheet(workbook, sheets: dict[str, bytearray], page: str) 
         )
         for address in range(128, min(len(page_bytes), 256))
     ]
-    populate_defined_page_sheet(worksheet, page, page_bytes, style_template, definitions)
+    populate_defined_page_sheet(worksheet, page, page_bytes, style_template, definitions, sheets)
     return len(definitions)
+
+
+def populate_vdm_threshold_summary(workbook, sheets: dict[str, bytearray]) -> int:
+    descriptors = collect_vdm_descriptors(sheets)
+    sheet_name = "Threshold summary"
+    if sheet_name in workbook.sheetnames:
+        worksheet = workbook[sheet_name]
+    else:
+        reference = workbook["VDM thresholds"] if "VDM thresholds" in workbook.sheetnames else workbook.worksheets[-1]
+        worksheet = workbook.copy_worksheet(reference)
+        worksheet.title = sheet_name
+
+    style_template = capture_sheet_styles(worksheet)
+    clear_sheet_values(worksheet)
+    headers = [
+        "VDM Instance",
+        "Observable Type ID",
+        "Observable",
+        "Resource",
+        "Threshold Set",
+        "Descriptor Page",
+        "Descriptor Bytes",
+        "Threshold Page",
+        "Low Alarm",
+        "Low Warning",
+        "High Warning",
+        "High Alarm",
+    ]
+    for column_index, header in enumerate(headers, start=1):
+        cell = worksheet.cell(1, column_index)
+        cell.value = header
+        apply_captured_style(cell, style_template.get((1, column_index)))
+
+    row_index = 2
+    for descriptor in descriptors:
+        type_id = int(descriptor["type_id"])
+        if type_id == 0:
+            continue
+        threshold_set = int(descriptor["threshold_set"])
+        threshold_page = f"{0x28 + ((threshold_set - 1) // 16):02X}"
+        local_set = (threshold_set - 1) % 16
+        base = 128 + local_set * 8
+        threshold_bytes = get_sheet_page_bytes(sheets, threshold_page)
+        values = {
+            "High Alarm": vdm_threshold_text(threshold_bytes, base, type_id),
+            "Low Alarm": vdm_threshold_text(threshold_bytes, base + 2, type_id),
+            "High Warning": vdm_threshold_text(threshold_bytes, base + 4, type_id),
+            "Low Warning": vdm_threshold_text(threshold_bytes, base + 6, type_id),
+        }
+        row_values = [
+            descriptor["instance"],
+            type_id,
+            vdm_observable_name(type_id),
+            descriptor["resource"],
+            threshold_set,
+            f"Page {descriptor['page']}h",
+            descriptor["raw"],
+            f"Page {threshold_page}h",
+            values["Low Alarm"],
+            values["Low Warning"],
+            values["High Warning"],
+            values["High Alarm"],
+        ]
+        for column_index, value in enumerate(row_values, start=1):
+            cell = worksheet.cell(row_index, column_index)
+            cell.value = value
+            apply_captured_style(cell, style_template.get((min(row_index, 3), min(column_index, len(UPPER_HEADERS)))))
+        row_index += 1
+
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = f"A1:L{max(row_index - 1, 1)}"
+    return max(row_index - 2, 0)
+
+
+def collect_vdm_descriptors(sheets: dict[str, bytearray]) -> list[dict[str, object]]:
+    descriptors: list[dict[str, object]] = []
+    for page_number in range(0x20, 0x24):
+        page = f"{page_number:02X}"
+        page_bytes = get_sheet_page_bytes(sheets, page)
+        if page_bytes is None:
+            continue
+        group_index = page_number - 0x20
+        first_instance = group_index * 64 + 1
+        for offset in range(64):
+            address = 128 + offset * 2
+            if address + 1 >= len(page_bytes):
+                continue
+            raw = bytes(page_bytes[address : address + 2])
+            even, odd = raw
+            local_threshold_id = (even >> 4) & 0x0F
+            threshold_set = group_index * 16 + local_threshold_id + 1
+            resource_code = even & 0x0F
+            descriptors.append(
+                {
+                    "instance": first_instance + offset,
+                    "page": page,
+                    "raw": " ".join(f"{value:02X}h" for value in raw),
+                    "local_threshold_id": local_threshold_id,
+                    "threshold_set": threshold_set,
+                    "resource": vdm_resource_name(resource_code),
+                    "type_id": odd,
+                }
+            )
+    return descriptors
+
+
+def get_sheet_page_bytes(sheets: dict[str, bytearray], page: str) -> bytearray | None:
+    page_bytes = sheets.get(page)
+    if page_bytes is not None:
+        return page_bytes
+    lower = sheets.get("lower")
+    if page == "00" and lower is not None and len(lower) >= 256:
+        return lower[128:256]
+    return None
+
+
+def vdm_threshold_text(page_bytes: bytearray | None, address: int, type_id: int) -> str:
+    if page_bytes is None or address + 1 >= len(page_bytes):
+        return "*"
+    return decode_vdm_x16(type_id, bytes(page_bytes[address : address + 2]))
+
+
+def vdm_instance_value(
+    page_bytes: bytearray | None,
+    start: int,
+    end: int,
+    page: str,
+    value_kind: str,
+    sheets: dict[str, bytearray],
+) -> str:
+    if page_bytes is None or end >= len(page_bytes) or end - start != 1:
+        return "*"
+    page_number = int(page, 16)
+    if value_kind == "sample":
+        descriptor_instance = (page_number - 0x24) * 64 + ((start - 128) // 2) + 1
+    else:
+        threshold_set = (page_number - 0x28) * 16 + ((start - 128) // 8) + 1
+        descriptor_instance = threshold_set
+    type_id = vdm_observable_type_for_instance(sheets, descriptor_instance)
+    if type_id is None:
+        return hex_value(bytes(page_bytes[start : end + 1]))
+    return decode_vdm_x16(type_id, bytes(page_bytes[start : end + 1]))
+
+
+def vdm_observable_type_for_instance(sheets: dict[str, bytearray], instance: int) -> int | None:
+    if instance < 1:
+        return None
+    page_number = 0x20 + ((instance - 1) // 64)
+    address = 128 + ((instance - 1) % 64) * 2 + 1
+    page_bytes = get_sheet_page_bytes(sheets, f"{page_number:02X}")
+    if page_bytes is None or address >= len(page_bytes):
+        return None
+    return int(page_bytes[address])
 
 
 def capture_sheet_styles(worksheet) -> dict[tuple[int, int], object]:
@@ -336,6 +492,7 @@ def populate_defined_page_sheet(
     page_bytes: bytearray,
     style_template: dict[tuple[int, int], object],
     definitions: list[dict[str, object]],
+    sheets: dict[str, bytearray] | None = None,
 ) -> None:
     for column_index, header in enumerate(UPPER_HEADERS, start=1):
         cell = worksheet.cell(1, column_index)
@@ -355,6 +512,11 @@ def populate_defined_page_sheet(
             str(definition["field"]),
             str(definition.get("type", "")),
         )
+        field_name = str(definition["field"])
+        if sheets and field_name.upper().startswith("VDMSAMPLE"):
+            interpreted = vdm_instance_value(page_bytes, start, end, page, "sample", sheets)
+        elif sheets and "THRESHOLD" in field_name.upper() and 0x28 <= int(page, 16) <= 0x2B:
+            interpreted = vdm_instance_value(page_bytes, start, end, page, "threshold", sheets)
         interpreted = value_column_text(interpreted, str(definition.get("description", "")), value, page_bytes, start, end, bits)
         values = [
             byte_range_label(start, end),
@@ -387,7 +549,81 @@ def cmis_page_definitions(page: str) -> list[dict[str, object]]:
         return page_1eh_definitions()
     if page == "1F":
         return page_1fh_definitions()
+    if page in {"20", "21", "22", "23"}:
+        return vdm_descriptor_page_definitions(page)
+    if page in {"24", "25", "26", "27"}:
+        return vdm_sample_page_definitions(page)
+    if page in {"28", "29", "2A", "2B"}:
+        return vdm_threshold_page_definitions(page)
     return []
+
+
+def vdm_descriptor_page_definitions(page: str) -> list[dict[str, object]]:
+    group_index = int(page, 16) - 0x20
+    first_instance = group_index * 64 + 1
+    rows: list[dict[str, object]] = []
+    for offset in range(64):
+        instance = first_instance + offset
+        address = 128 + offset * 2
+        rows.append(
+            field(
+                address,
+                address + 1,
+                "7-0",
+                f"VDMDescriptor{instance}",
+                "RO",
+                f"Descriptor register for VDM instance {instance}; byte 0 contains LocalThresholdSetID and monitored resource, byte 1 contains Observable Type ID",
+            )
+        )
+    return rows
+
+
+def vdm_sample_page_definitions(page: str) -> list[dict[str, object]]:
+    group_index = int(page, 16) - 0x24
+    first_instance = group_index * 64 + 1
+    rows: list[dict[str, object]] = []
+    for offset in range(64):
+        instance = first_instance + offset
+        address = 128 + offset * 2
+        rows.append(
+            field(
+                address,
+                address + 1,
+                "7-0",
+                f"VDMSample{instance}",
+                "RO",
+                f"X16 real-time value for VDM instance {instance}; interpretation is defined by VDMDescriptor{instance}",
+            )
+        )
+    return rows
+
+
+def vdm_threshold_page_definitions(page: str) -> list[dict[str, object]]:
+    group_index = int(page, 16) - 0x28
+    first_threshold_set = group_index * 16 + 1
+    threshold_names = [
+        ("HighAlarmThreshold", "High alarm threshold"),
+        ("LowAlarmThreshold", "Low alarm threshold"),
+        ("HighWarningThreshold", "High warning threshold"),
+        ("LowWarningThreshold", "Low warning threshold"),
+    ]
+    rows: list[dict[str, object]] = []
+    for set_offset in range(16):
+        threshold_set = first_threshold_set + set_offset
+        base_address = 128 + set_offset * 8
+        for value_offset, (name, description) in enumerate(threshold_names):
+            address = base_address + value_offset * 2
+            rows.append(
+                field(
+                    address,
+                    address + 1,
+                    "7-0",
+                    f"{name}{threshold_set}",
+                    "RO",
+                    f"X16 {description.lower()} for VDM threshold set {threshold_set}; value type is defined by associated VDM descriptor",
+                )
+            )
+    return rows
 
 
 def page_03h_definitions() -> list[dict[str, object]]:
@@ -955,6 +1191,9 @@ def interpreted_value_for_range(page_bytes: object, start: int, end: int, bits: 
     if upper_field == "CMISREVISION" and len(raw) == 1:
         return f"{raw[0] >> 4}.{raw[0] & 0x0F}"
 
+    if upper_field.startswith("VDMDESCRIPTOR") and len(raw) == 2:
+        return describe_vdm_descriptor(raw)
+
     if upper_field == "MODULESTATE" and len(raw) == 1:
         state = (raw[0] >> 1) & 0x07
         return MODULE_STATES.get(state, f"Unknown ({state})")
@@ -1042,6 +1281,66 @@ def optical_power_dbm(raw: bytes) -> str:
     if mw <= 0:
         return "-inf dBm"
     return f"{10 * math.log10(mw):.1f} dBm"
+
+
+def describe_vdm_descriptor(raw: bytes) -> str:
+    even, type_id = raw
+    local_threshold_id = (even >> 4) & 0x0F
+    resource_code = even & 0x0F
+    if type_id == 0:
+        return "Not used"
+    return (
+        f"Local threshold set {local_threshold_id}; "
+        f"{vdm_resource_name(resource_code)}; "
+        f"{vdm_observable_name(type_id)}"
+    )
+
+
+def vdm_resource_name(code: int) -> str:
+    if 0 <= code <= 7:
+        return f"Lane/Data Path {code + 1}"
+    if code == 15:
+        return "Module"
+    return f"Reserved resource {code}"
+
+
+def vdm_observable_name(type_id: int) -> str:
+    return VDM_OBSERVABLE_TYPES.get(type_id, {}).get("name", vdm_reserved_type_name(type_id))
+
+
+def vdm_reserved_type_name(type_id: int) -> str:
+    if 25 <= type_id <= 99:
+        return f"Reserved observable type {type_id}"
+    if 100 <= type_id <= 127:
+        return f"Custom observable type {type_id}"
+    if 128 <= type_id <= 255:
+        return f"OIF restricted observable type {type_id}"
+    return f"Unknown observable type {type_id}"
+
+
+def decode_vdm_x16(type_id: int, raw: bytes) -> str:
+    if len(raw) != 2:
+        return hex_value(raw)
+    value = int.from_bytes(raw, "big", signed=False)
+    signed_value = int.from_bytes(raw, "big", signed=True)
+    if type_id == 0:
+        return "N/A"
+    if type_id == 1:
+        return f"{value}%"
+    if type_id == 2:
+        return f"{signed_value * 100 / 32767:.1f}%"
+    if type_id == 3:
+        return f"{signed_value * 10:g} MHz"
+    if type_id == 4:
+        return f"{signed_value / 256:.1f} C"
+    if type_id in {5, 6, 7, 8}:
+        return f"{value / 256:.1f} dB"
+    if 9 <= type_id <= 24:
+        try:
+            return f"{struct.unpack('>e', raw)[0]:.3g}"
+        except struct.error:
+            return hex_value(raw)
+    return hex_value(raw)
 
 
 def is_ascii_field(field_name: str, type_text: str, length: int) -> bool:
@@ -1167,6 +1466,35 @@ MEDIA_INTERFACE_TECHNOLOGIES = {
     0x0B: "Copper cable, far-end limiting active equalizers",
     0x0C: "Copper cable, near-end limiting active equalizers",
     0x0D: "Copper cable, linear active equalizers",
+}
+
+
+VDM_OBSERVABLE_TYPES = {
+    0: {"name": "Not Used indicator", "data_type": "N/A"},
+    1: {"name": "Laser Age (0% at BOL, 100% EOL)", "data_type": "U16", "unit": "%"},
+    2: {"name": "TEC Current", "data_type": "S16", "unit": "%"},
+    3: {"name": "Laser Frequency Error", "data_type": "S16", "unit": "MHz"},
+    4: {"name": "Laser Temperature", "data_type": "S16", "unit": "C"},
+    5: {"name": "eSNR Media Input", "data_type": "U16", "unit": "dB"},
+    6: {"name": "eSNR Host Input", "data_type": "U16", "unit": "dB"},
+    7: {"name": "PAM4 Level Transition Parameter Media Input", "data_type": "U16", "unit": "dB"},
+    8: {"name": "PAM4 Level Transition Parameter Host Input", "data_type": "U16", "unit": "dB"},
+    9: {"name": "Pre-FEC BER Minimum Media Input", "data_type": "F16"},
+    10: {"name": "Pre-FEC BER Minimum Host Input", "data_type": "F16"},
+    11: {"name": "Pre-FEC BER Maximum Media Input", "data_type": "F16"},
+    12: {"name": "Pre-FEC BER Maximum Host Input", "data_type": "F16"},
+    13: {"name": "Pre-FEC BER Average Media Input", "data_type": "F16"},
+    14: {"name": "Pre-FEC BER Average Host Input", "data_type": "F16"},
+    15: {"name": "Pre-FEC BER Current Value Media Input", "data_type": "F16"},
+    16: {"name": "Pre-FEC BER Current Value Host Input", "data_type": "F16"},
+    17: {"name": "FERC Minimum Media Input", "data_type": "F16"},
+    18: {"name": "FERC Minimum Host Input", "data_type": "F16"},
+    19: {"name": "FERC Maximum Media Input", "data_type": "F16"},
+    20: {"name": "FERC Maximum Host Input", "data_type": "F16"},
+    21: {"name": "FERC Average Media Input", "data_type": "F16"},
+    22: {"name": "FERC Average Host Input", "data_type": "F16"},
+    23: {"name": "FERC Current Value Media Input", "data_type": "F16"},
+    24: {"name": "FERC Current Value Host Input", "data_type": "F16"},
 }
 
 

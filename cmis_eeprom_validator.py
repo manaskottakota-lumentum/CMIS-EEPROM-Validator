@@ -815,8 +815,8 @@ def address_display(parameter: ExpectedParameter) -> str:
     start = parameter.start
     end = parameter.start + parameter.length - 1
     if page == "lower":
-        return f"0x{start:02X}-0x{end:02X}" if end != start else f"0x{start:02X}"
-    return f"{page}h / 0x{start:02X}-0x{end:02X}" if end != start else f"{page}h / 0x{start:02X}"
+        return f"Lower:{start}-{end}" if end != start else f"Lower:{start}"
+    return f"{page}H:{start}-{end}" if end != start else f"{page}H:{start}"
 
 
 def normalize_hex(value: object) -> str:
