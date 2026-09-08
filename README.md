@@ -16,7 +16,7 @@ Run the packaged Windows app:
 
 ```powershell
 cd "C:\Users\kot107695\OneDrive - Lumentum Operations LLC\Documents\CMIS-EEPROM-Validator"
-.\dist\CMIS-EEPROM-Validator.exe
+.\executable\CMIS-EEPROM-Validator-Prototype-v4.exe
 ```
 
 Run the Python Tkinter app directly:
@@ -38,7 +38,7 @@ cd "C:\Users\kot107695\OneDrive - Lumentum Operations LLC\Documents\CMIS-EEPROM-
 - `cmis_eeprom_validator.py` - CMIS dump parsing, spreadsheet loading, and validation logic.
 - `workbook_generator.py` - generates validator-ready `.xlsx` specification spreadsheets from EEPROM dumps.
 - `samples/` - bundled sample dumps and spreadsheets used by the app.
-- `dist/` - standalone Windows EXE build.
+- `executable/` - standalone Windows EXE build.
 
 ## Spreadsheet Format
 

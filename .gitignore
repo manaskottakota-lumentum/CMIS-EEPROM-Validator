@@ -10,5 +10,6 @@ tmp_uploads/
 build/
 dist/
 dist_tk/
+executable/*/
 scratch/
 .vs/
