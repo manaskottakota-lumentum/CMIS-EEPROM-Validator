@@ -564,7 +564,6 @@ class CmisValidatorTk(tk.Tk):
 
         ttk.Button(buttons, text="Open Specifications Spreadsheet", command=open_workbook).pack(side="left", padx=(0, 6))
         ttk.Button(buttons, text="Load to Expected Values", command=load_expected_values).pack(side="left", padx=(0, 6))
-        ttk.Button(buttons, text="Close", command=dialog.destroy).pack(side="left")
 
         dialog.update_idletasks()
         x = self.winfo_rootx() + (self.winfo_width() - dialog.winfo_width()) // 2

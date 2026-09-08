@@ -13,6 +13,7 @@ from copy import copy
 from xml.sax.saxutils import escape
 
 from openpyxl import load_workbook
+from openpyxl.cell.cell import MergedCell
 from openpyxl.utils import get_column_letter
 
 from cmis_eeprom_validator import CmisDump
@@ -97,6 +98,7 @@ def generate_template_workbook_from_dump(dump_path: str, output_path: str, templ
             description_col += 1
         expand_template_reserved_custom_rows(
             worksheet,
+            page=page,
             byte_col=byte_col,
             hex_col=headers.get("hex"),
             size_col=headers.get("size(bytes)") or headers.get("size"),
@@ -202,6 +204,7 @@ def copy_column_format(worksheet, source_col: int, target_col: int) -> None:
 
 def expand_template_reserved_custom_rows(
     worksheet,
+    page: str,
     byte_col: int,
     hex_col: int | None,
     size_col: int | None,
@@ -228,6 +231,12 @@ def expand_template_reserved_custom_rows(
             continue
         source_values = [worksheet.cell(row_index, column).value for column in range(1, worksheet.max_column + 1)]
         worksheet.insert_rows(row_index + 1, end - start)
+        unmerge_cells_intersecting(
+            worksheet,
+            row_index,
+            row_index + (end - start),
+            [byte_col, hex_col, size_col, bits_col, field_col, type_col, description_col],
+        )
         for offset, address in enumerate(range(start, end + 1)):
             target_row = row_index + offset
             if offset:
@@ -242,6 +251,48 @@ def expand_template_reserved_custom_rows(
             if bits_col:
                 worksheet.cell(target_row, bits_col).value = "7-0"
             worksheet.cell(target_row, field_col).value = byte_section_name(str(definition["field"]), address)
+            if page.lower() == "lower" and address == 80:
+                worksheet.cell(target_row, field_col).value = "Custom11ComponentTempMargin"
+                if type_col:
+                    worksheet.cell(target_row, type_col).value = "RO"
+                if description_col:
+                    worksheet.cell(target_row, description_col).value = (
+                        "Google custom component temperature margin at 00h:80; "
+                        "signed 8-bit value in C"
+                    )
+    unmerge_cells_intersecting(worksheet, 2, worksheet.max_row, [byte_col, hex_col])
+    repair_expanded_byte_labels(worksheet, byte_col, hex_col, field_col)
+
+
+def unmerge_cells_intersecting(worksheet, min_row: int, max_row: int, columns: list[int | None]) -> None:
+    target_columns = {column for column in columns if column}
+    for merged_range in list(worksheet.merged_cells.ranges):
+        if merged_range.max_row < min_row or merged_range.min_row > max_row:
+            continue
+        if target_columns and not any(merged_range.min_col <= column <= merged_range.max_col for column in target_columns):
+            continue
+        worksheet.merged_cells.ranges.discard(merged_range)
+        for row in range(merged_range.min_row, merged_range.max_row + 1):
+            for column in range(merged_range.min_col, merged_range.max_col + 1):
+                if target_columns and column not in target_columns:
+                    continue
+                if isinstance(worksheet._cells.get((row, column)), MergedCell):
+                    del worksheet._cells[(row, column)]
+
+
+def repair_expanded_byte_labels(worksheet, byte_col: int, hex_col: int | None, field_col: int) -> None:
+    for row_index in range(2, worksheet.max_row + 1):
+        field_name = str(worksheet.cell(row_index, field_col).value or "")
+        match = re.fullmatch(r"(?:Custom|Reserved)Byte([0-9A-Fa-f]{2})h", field_name)
+        if match:
+            address = int(match.group(1), 16)
+        elif field_name == "Custom11ComponentTempMargin":
+            address = 80
+        else:
+            continue
+        worksheet.cell(row_index, byte_col).value = address
+        if hex_col:
+            worksheet.cell(row_index, hex_col).value = f"{address:02X}"
 
 
 def copy_row_format(worksheet, source_row: int, target_row: int) -> None:
@@ -1162,6 +1213,9 @@ def interpreted_value_for_range(page_bytes: object, start: int, end: int, bits: 
     type_label = str(type_text or "")
     upper_field = field.upper()
     upper_type = type_label.upper()
+
+    if upper_field == "CUSTOM11COMPONENTTEMPMARGIN" and len(raw) == 1:
+        return f"{int.from_bytes(raw, 'big', signed=True):.1f} C"
 
     bit_range = parse_bits(bits)
     if bit_range and len(raw) == 1:
