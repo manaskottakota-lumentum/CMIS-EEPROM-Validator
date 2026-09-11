@@ -169,7 +169,7 @@ class CmisValidatorTk(tk.Tk):
         style.configure("TEntry", padding=(4, 2))
         style.configure("Treeview", rowheight=26, font=("Segoe UI", 9), background="white", fieldbackground="white")
         style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background="#f5f5f5")
-        style.map("Treeview", background=[("selected", "#dbeafe")], foreground=[("selected", "#111827")])
+        style.map("Treeview", background=[("selected", "#dbeafe")])
 
     def _build_ui(self) -> None:
         self.canvas = tk.Canvas(self, bg="#f2f2f2", highlightthickness=0)
@@ -185,7 +185,7 @@ class CmisValidatorTk(tk.Tk):
         self.file_grid.pack(fill="x", pady=(0, 6))
         self.file_grid.columnconfigure(0, weight=1)
         self.file_grid.columnconfigure(1, weight=1)
-        self._file_card(self.file_grid, 0, "EEPROM Dump", self.dump_path, self.browse_dump, self.paste_dump)
+        self._file_card(self.file_grid, 0, "EEPROM Dump", self.dump_path, self.browse_dump)
         self._file_card(self.file_grid, 1, "Expected Values (Excel)", self.workbook_path, self.browse_workbook)
 
         self.action_bar = ttk.Frame(self.page)
@@ -193,7 +193,6 @@ class CmisValidatorTk(tk.Tk):
         ttk.Button(self.action_bar, text="Run Validation", style="Primary.TButton", command=self.run_validation).pack(side="left", padx=(0, 6))
         ttk.Button(self.action_bar, text="Generate Spec", command=self.generate_workbook).pack(side="left", padx=(0, 6))
         ttk.Button(self.action_bar, text="Clear", command=self.clear).pack(side="left", padx=(0, 6))
-        ttk.Button(self.action_bar, text="Export Results", command=self.export_results).pack(side="left", padx=(0, 16))
         ttk.Checkbutton(self.action_bar, text="Show all rows", variable=self.show_all_rows, command=self.apply_filters).pack(side="left")
         self.msft_sample_button = ttk.Button(self.action_bar, text="Load Arista Sample", command=self.load_arista_sample)
         self.msft_sample_button.pack(side="right")
@@ -250,7 +249,8 @@ class CmisValidatorTk(tk.Tk):
         toolbar.pack(fill="x", padx=6, pady=(2, 6))
 
         ttk.Label(toolbar, text="Search", style="Field.TLabel").pack(side="left", padx=(0, 4))
-        ttk.Entry(toolbar, textvariable=self.search_text, width=38).pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.search_entry = ttk.Entry(toolbar, textvariable=self.search_text, width=38)
+        self.search_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         ttk.Label(toolbar, text="Column", style="Field.TLabel").pack(side="left", padx=(0, 4))
         self.column_combo = ttk.Combobox(toolbar, textvariable=self.search_column, values=self._column_options(), state="readonly", width=18)
@@ -294,7 +294,7 @@ class CmisValidatorTk(tk.Tk):
             "status": 120,
         }
         for column in self.columns:
-            self.tree.heading(column, text=self.headings[column])
+            self.tree.heading(column, text=self.headings[column], command=lambda selected=column: self.select_search_column(selected))
             self.tree.column(column, width=self.compact_widths[column], minwidth=65, stretch=column == "parameter")
         y_scroll = ttk.Scrollbar(table_wrap, orient="vertical", command=self.tree.yview)
         x_scroll = ttk.Scrollbar(table_wrap, orient="horizontal", command=self.tree.xview)
@@ -411,8 +411,15 @@ class CmisValidatorTk(tk.Tk):
         self.tree.configure(columns=self.columns)
         widths = self.expanded_widths if self.results_expanded else self.compact_widths
         for column in self.columns:
-            self.tree.heading(column, text=self.headings[column])
+            self.tree.heading(column, text=self.headings[column], command=lambda selected=column: self.select_search_column(selected))
             self.tree.column(column, width=widths[column], minwidth=65, stretch=column == "parameter")
+
+    def select_search_column(self, column: str) -> None:
+        label = self.headings.get(column)
+        if not label:
+            return
+        self.search_column.set(label)
+        self.search_entry.focus_set()
 
     def browse_dump(self) -> None:
         path = filedialog.askopenfilename(

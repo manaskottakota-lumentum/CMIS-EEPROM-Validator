@@ -652,9 +652,15 @@ def msft_rows_to_dicts(rows: List[List[str]], headers: List[str], header_row_ind
             current_start, current_end = start, end
         length = end - start + 1
         field_name = raw_record.get("parameter", "")
+        converted_value = raw_record.get("value", "")
         expected, comparator, mask, check = normalize_msft_requirement(
             raw_record.get("expected", ""), length, raw_record.get("bits", "7-0"), field_name
         )
+        if parse_expected_range(converted_value):
+            expected = converted_value
+            comparator = "range"
+            mask = ""
+            check = "YES"
         description = raw_record.get("description", "")
         description = f"{field_name} - {description}" if description else field_name
         records.append(
@@ -669,7 +675,7 @@ def msft_rows_to_dicts(rows: List[List[str]], headers: List[str], header_row_ind
                 "bits": raw_record.get("bits", "7-0"),
                 "data_type": raw_record.get("data_type", "") or "Hex",
                 "expected": expected,
-                "value": expected,
+                "value": converted_value or expected,
                 "comparator": comparator,
                 "mask": mask,
                 "description": description,
@@ -744,7 +750,8 @@ def load_expected_parameters(path: str) -> List[ExpectedParameter]:
             data_type = record.get("data_type", "").strip() or cmis_type or simple_type or "Hex"
             description = record.get("description", "").strip()
             value = record.get("value", "").strip()
-            expected = record.get("expected", "").strip() or value
+            raw_expected = record.get("expected", "").strip()
+            expected = value if parse_expected_range(value) else raw_expected or value
             has_check_column = "check" in record
             check = record.get("check", "").strip()
             active_check = is_check_yes(check) if has_check_column else bool(expected)
@@ -861,11 +868,34 @@ def hex_wildcard_match(actual: object, expected: object) -> bool:
     return all(expected_char == "-" or expected_char == actual_char for actual_char, expected_char in zip(actual_hex, expected_pattern))
 
 
+def parse_expected_range(value: object) -> Optional[Tuple[float, float]]:
+    text = compact_text(value)
+    if not text or looks_like_hex_wildcard_bytes(text):
+        return None
+    match = re.fullmatch(
+        r"\s*([+-]?\d+(?:\.\d+)?)\s*(?:-|–|—|\bto\b)\s*([+-]?\d+(?:\.\d+)?)(?:\s*[A-Za-z%°/().-]*)?\s*",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    minimum = float(match.group(1))
+    maximum = float(match.group(2))
+    if minimum > maximum:
+        minimum, maximum = maximum, minimum
+    return minimum, maximum
+
+
+def numeric_actual_for_comparison(parameter: ExpectedParameter, actual: str, raw: bytes) -> str:
+    return interpreted_parameter_display(parameter, raw) or actual
+
+
 def values_match(parameter: ExpectedParameter, actual: str, raw: bytes) -> Tuple[bool, str]:
     comparator = parameter.comparator.strip().lower() or "exact"
     dtype = parameter.data_type.strip().lower()
     compact_dtype = re.sub(r"[^a-z0-9]+", "", dtype)
     expected = parameter.expected
+    expected_range = parse_expected_range(expected)
     if comparator == "range":
         if parameter.minimum or parameter.maximum:
             minimum = parse_float(parameter.minimum)
@@ -874,10 +904,16 @@ def values_match(parameter: ExpectedParameter, actual: str, raw: bytes) -> Tuple
             left, right = expected.split("..", 1)
             minimum = parse_float(left)
             maximum = parse_float(right)
+        elif expected_range:
+            minimum, maximum = expected_range
         else:
-            raise ValidationError("Range comparisons need min/max columns or an expected value like 3.1..3.6.")
-        actual_value = parse_float(actual)
-        return minimum <= actual_value <= maximum, f"Expected {minimum:g} to {maximum:g}"
+            raise ValidationError("Range comparisons need min/max columns or an expected value like 3.1..3.6 or 3.1 - 3.6.")
+        actual_value = parse_float(numeric_actual_for_comparison(parameter, actual, raw))
+        return minimum <= actual_value <= maximum, f"{minimum:g} to {maximum:g}"
+    if expected_range:
+        minimum, maximum = expected_range
+        actual_value = parse_float(numeric_actual_for_comparison(parameter, actual, raw))
+        return minimum <= actual_value <= maximum, f"{minimum:g} to {maximum:g}"
     if comparator == "tolerance":
         actual_value = parse_float(actual)
         expected_value = parse_float(expected)

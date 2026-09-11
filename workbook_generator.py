@@ -59,9 +59,35 @@ def is_readable_file(path: Path) -> bool:
         return False
 
 
+def selected_dump_sheets(dump: CmisDump) -> dict[str, bytearray]:
+    populated_modes = [
+        (mode, pages)
+        for mode, pages in dump.pages.items()
+        if any(len(data) for data in pages.values())
+    ]
+    if not populated_modes:
+        return {}
+    primary_mode, primary_pages = max(
+        populated_modes,
+        key=lambda item: (sum(len(data) for data in item[1].values()), 1 if item[0] == "default" else 0),
+    )
+    merged = {
+        page: bytearray(data)
+        for page, data in primary_pages.items()
+        if len(data)
+    }
+    preferred_modes = [primary_mode, "default", "high", "low"]
+    preferred_modes.extend(mode for mode, _ in populated_modes if mode not in preferred_modes)
+    for mode in preferred_modes:
+        for page, data in dump.pages.get(mode, {}).items():
+            if len(data) and page not in merged:
+                merged[page] = bytearray(data)
+    return merged
+
+
 def generate_template_workbook_from_dump(dump_path: str, output_path: str, template_path: Path) -> int:
     dump = CmisDump.from_file(dump_path)
-    sheets = dump.pages.get("default") or next(iter(dump.pages.values()), {})
+    sheets = selected_dump_sheets(dump)
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -119,6 +145,10 @@ def generate_template_workbook_from_dump(dump_path: str, output_path: str, templ
             bits = str(bits_value) if bits_value is not None and str(bits_value).strip() != "" else "7-0"
             field_name = str(worksheet.cell(row_index, field_col).value or "") if field_col else ""
             type_text = str(worksheet.cell(row_index, type_col).value or "") if type_col else ""
+            if description_col and is_vdm_threshold_page(page):
+                threshold_description = vdm_threshold_description_for_address(sheets, page, start)
+                if threshold_description:
+                    worksheet.cell(row_index, description_col).value = threshold_description
             value = template_value_for_range(page_bytes, start, end, bits)
             description_text = str(worksheet.cell(row_index, description_col).value or "") if description_col else ""
             interpreted = interpreted_value_for_range(page_bytes, start, end, bits, field_name, type_text)
@@ -480,6 +510,70 @@ def vdm_threshold_text(page_bytes: bytearray | None, address: int, type_id: int)
     return decode_vdm_x16(type_id, bytes(page_bytes[address : address + 2]))
 
 
+def is_vdm_threshold_page(page: str) -> bool:
+    try:
+        page_number = int(page, 16)
+    except ValueError:
+        return False
+    return 0x28 <= page_number <= 0x2B
+
+
+def vdm_threshold_description_for_address(sheets: dict[str, bytearray], page: str, start: int) -> str:
+    context = vdm_threshold_context_for_address(sheets, page, start)
+    if not context:
+        return ""
+    threshold_kind = str(context["threshold_kind"])
+    descriptor_text = str(context["descriptor_text"])
+    return f"{threshold_kind} for {descriptor_text}"
+
+
+def vdm_threshold_context_for_address(sheets: dict[str, bytearray], page: str, start: int) -> dict[str, object] | None:
+    try:
+        page_number = int(page, 16)
+    except ValueError:
+        return None
+    if not 0x28 <= page_number <= 0x2B or start < 128:
+        return None
+    local_offset = start - 128
+    if local_offset < 0 or local_offset >= 128:
+        return None
+    threshold_kind_by_offset = {
+        0: "High alarm threshold",
+        2: "Low alarm threshold",
+        4: "High warning threshold",
+        6: "Low warning threshold",
+    }
+    threshold_kind = threshold_kind_by_offset.get(local_offset % 8)
+    if not threshold_kind:
+        return None
+    threshold_set = (page_number - 0x28) * 16 + (local_offset // 8) + 1
+    descriptor_text = vdm_descriptor_text_for_threshold_set(sheets, threshold_set)
+    if not descriptor_text:
+        return None
+    return {"threshold_set": threshold_set, "threshold_kind": threshold_kind, "descriptor_text": descriptor_text}
+
+
+def vdm_descriptor_text_for_threshold_set(sheets: dict[str, bytearray], threshold_set: int) -> str:
+    descriptors = [
+        descriptor
+        for descriptor in collect_vdm_descriptors(sheets)
+        if int(descriptor["threshold_set"]) == threshold_set and int(descriptor["type_id"]) != 0
+    ]
+    if not descriptors:
+        return ""
+    parts: list[str] = []
+    seen: set[str] = set()
+    for descriptor in descriptors:
+        text = (
+            f"{vdm_observable_name(int(descriptor['type_id']))} on {descriptor['resource']} "
+            f"(VDM instance {descriptor['instance']}, descriptor Page {descriptor['page']}h)"
+        )
+        if text not in seen:
+            parts.append(text)
+            seen.add(text)
+    return "; ".join(parts)
+
+
 def vdm_instance_value(
     page_bytes: bytearray | None,
     start: int,
@@ -568,7 +662,12 @@ def populate_defined_page_sheet(
             interpreted = vdm_instance_value(page_bytes, start, end, page, "sample", sheets)
         elif sheets and "THRESHOLD" in field_name.upper() and 0x28 <= int(page, 16) <= 0x2B:
             interpreted = vdm_instance_value(page_bytes, start, end, page, "threshold", sheets)
-        interpreted = value_column_text(interpreted, str(definition.get("description", "")), value, page_bytes, start, end, bits)
+        description = str(definition.get("description", f"{definition['field']} from {_page_label(page)}"))
+        if sheets and is_vdm_threshold_page(page):
+            threshold_description = vdm_threshold_description_for_address(sheets, page, start)
+            if threshold_description:
+                description = threshold_description
+        interpreted = value_column_text(interpreted, description, value, page_bytes, start, end, bits)
         values = [
             byte_range_label(start, end),
             hex_range_label(start, end),
@@ -578,7 +677,7 @@ def populate_defined_page_sheet(
             definition.get("type", "Hex"),
             value,
             interpreted,
-            definition.get("description", f"{definition['field']} from {_page_label(page)}"),
+            description,
         ]
         for column_index, value in enumerate(values, start=1):
             cell = worksheet.cell(row_index, column_index)
@@ -1068,7 +1167,7 @@ def apply_captured_style(target, style: object) -> None:
 
 def generate_basic_workbook_from_dump(dump_path: str, output_path: str) -> int:
     dump = CmisDump.from_file(dump_path)
-    sheets = dump.pages.get("default") or next(iter(dump.pages.values()), {})
+    sheets = selected_dump_sheets(dump)
     workbook_rows: dict[str, list[list[str]]] = {}
 
     for page, data in sorted(sheets.items(), key=lambda item: _page_sort_key(item[0])):
