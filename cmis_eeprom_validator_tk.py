@@ -153,6 +153,7 @@ class CmisValidatorTk(tk.Tk):
     def _configure_styles(self) -> None:
         self.configure(bg="#f2f2f2")
         style = ttk.Style(self)
+        self.tree_style = style
         style.theme_use("vista" if "vista" in style.theme_names() else "clam")
         style.configure(".", font=("Segoe UI", 10))
         style.configure("TFrame", background="#f2f2f2")
@@ -641,6 +642,7 @@ class CmisValidatorTk(tk.Tk):
             next_index = min(selected_index or 0, len(self.filtered_results) - 1)
             self.tree.selection_set(str(next_index))
             self.tree.focus(str(next_index))
+            self.update_selected_row_style(self.filtered_results[next_index])
             self.show_detail(self.filtered_results[next_index])
         else:
             self.clear_detail()
@@ -678,7 +680,22 @@ class CmisValidatorTk(tk.Tk):
             return
         index = int(selected[0])
         if 0 <= index < len(self.filtered_results):
+            self.update_selected_row_style(self.filtered_results[index])
             self.show_detail(self.filtered_results[index])
+
+    def update_selected_row_style(self, row: dict[str, object]) -> None:
+        status = str(row.get("status", "")).upper()
+        if status == "PASS":
+            selected_foreground = "#00875a"
+        elif status in {"FAIL", "ERROR"}:
+            selected_foreground = "#dc2626"
+        else:
+            selected_foreground = "#111827"
+        self.tree_style.map(
+            "Treeview",
+            background=[("selected", "#dbeafe")],
+            foreground=[("selected", selected_foreground)],
+        )
 
     def show_detail(self, row: dict[str, object]) -> None:
         self.detail_title.configure(text=str(row.get("parameter") or "-"))
